@@ -10,6 +10,18 @@ ekspor CSV.
 > yang dikumpulkan dalam satu berkas konfigurasi: [`data/master.js`](data/master.js). Ganti dengan
 > data milik Anda sebelum dipakai sungguhan.
 
+## Tangkapan Layar
+
+**Halaman staf cabang** — beranda untuk memilih rumah makan dan cabang, memasukkan PIN cabang, serta
+melihat ringkasan pencatatan hari ini, sebelum menuju formulir penjualan, pengeluaran, dan stok.
+
+<img src="docs/tangkapan-layar/halaman-staf.png" alt="Tangkapan layar halaman staf cabang" width="760">
+
+**Dashboard admin** — rekap penjualan, pengeluaran, dan selisih laba kotor, dilengkapi perbandingan
+antar cabang dan antar rumah makan, rekap menu terjual, posisi stok, data master, serta ekspor CSV.
+
+<img src="docs/tangkapan-layar/dashboard-admin.png" alt="Tangkapan layar dashboard admin" width="760">
+
 ## Teknologi
 
 - **Front-end:** HTML, CSS, JavaScript murni (tanpa framework besar), dirancang mobile-first.
@@ -33,6 +45,8 @@ ekspor CSV.
 │   └── aplikasi.db         # Database SQLite (dibuat otomatis, tidak masuk git)
 ├── db/
 │   └── sqlite.js           # Koneksi SQLite, skema tabel, seeding data contoh
+├── docs/
+│   └── tangkapan-layar/    # Tangkapan layar yang dipakai pada README
 ├── routes/
 │   ├── staf.js             # Bagian A: API halaman staf cabang
 │   ├── admin.js            # Bagian B: API dashboard admin
