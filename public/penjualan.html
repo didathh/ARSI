@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pencatatan Penjualan — Sistem Pencatatan Terpadu Dua Rumah Makan</title>
+  <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+  <header class="kepala" id="kepala"></header>
+  <nav class="nav-cips" id="nav"></nav>
+
+  <main class="utama">
+    <section class="kartu">
+      <h2>Pencatatan Penjualan</h2>
+      <form id="formPenjualan" autocomplete="off">
+        <label for="tanggal">Tanggal</label>
+        <input type="date" id="tanggal" required>
+
+        <label for="cabang">Cabang</label>
+        <input type="text" id="cabang" readonly>
+
+        <label for="menu">Menu</label>
+        <select id="menu" required></select>
+
+        <label for="jumlah">Jumlah Terjual</label>
+        <input type="number" id="jumlah" min="1" step="1" value="1" required>
+
+        <div class="kotak" style="margin-top:14px">
+          <div class="label">Total (dihitung otomatis dari harga menu)</div>
+          <div class="nilai" id="total">Rp 0</div>
+          <div class="kecil-teks" id="hargaSatuan"></div>
+        </div>
+
+        <label for="metode">Metode Pembayaran</label>
+        <select id="metode" required></select>
+
+        <label for="catatan">Catatan</label>
+        <textarea id="catatan" placeholder="Catatan tambahan (opsional)"></textarea>
+
+        <div class="periksa">
+          <input type="checkbox" id="konfirmasi">
+          <label for="konfirmasi">Saya menyatakan data yang saya masukkan telah diperiksa kebenarannya oleh petugas pencatat.</label>
+        </div>
+
+        <button class="tombol" type="submit">Simpan Penjualan</button>
+        <div class="pesan" id="pesan"></div>
+      </form>
+    </section>
+
+    <section class="kartu">
+      <h2>Penjualan Terakhir di Cabang Ini</h2>
+      <div class="bungkus-tabel">
+        <table>
+          <thead><tr><th>Tanggal</th><th>Menu</th><th class="angka">Jumlah</th><th class="angka">Total</th></tr></thead>
+          <tbody id="daftar"><tr><td colspan="4" class="kosong">Memuat…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="./js/util.js"></script>
+  <script src="./js/staf.js"></script>
+  <script>
+    const sesi = wajibSesi();
+    if (sesi) {
+      pasangNavigasi('penjualan.html');
+      const elMenu = document.getElementById('menu');
+      const elJumlah = document.getElementById('jumlah');
+      const pesan = document.getElementById('pesan');
+      document.getElementById('cabang').value = `${sesi.cabang.nama} (${sesi.cabang.kode})`;
+      document.getElementById('tanggal').value = hariIni();
+
+      let master = null;
+      function hitungTotal() {
+        const pilihan = master ? master.menu.find((m) => String(m.id) === elMenu.value) : null;
+        const jumlah = Number(elJumlah.value) || 0;
+        const harga = pilihan ? pilihan.harga : 0;
+        document.getElementById('total').textContent = rupiah(harga * jumlah);
+        document.getElementById('hargaSatuan').textContent = pilihan
+          ? `${rupiah(harga)} × ${jumlah} ${esc(pilihan.nama)}`
+          : '';
+      }
+
+      async function muat() {
+        master = await api('/api/staf/master');
+        const menuRm = master.menu.filter((m) => m.rumah_makan_id === sesi.cabang.rumahMakanId);
+        elMenu.innerHTML = menuRm
+          .map((m) => `<option value="${m.id}">${esc(m.nama)} — ${rupiah(m.harga)}</option>`)
+          .join('');
+        document.getElementById('metode').innerHTML = master.metodePembayaran
+          .map((x) => `<option value="${esc(x)}">${esc(x)}</option>`)
+          .join('');
+        hitungTotal();
+        muatRiwayat();
+      }
+
+      elMenu.addEventListener('change', hitungTotal);
+      elJumlah.addEventListener('input', hitungTotal);
+
+      async function muatRiwayat() {
+        try {
+          const h = await api('/api/staf/riwayat?dari=' + tanggalLalu(7) + '&sampai=' + hariIni(), { token: sesi.token });
+          const penjualan = h.data.filter((d) => d.jenis === 'penjualan').slice(0, 20);
+          document.getElementById('daftar').innerHTML = penjualan.length
+            ? penjualan.map((p) => `
+              <tr><td>${tanggalIndo(p.tanggal)}</td>
+                  <td>${esc(p.keterangan.replace('Penjualan: ', ''))}</td>
+                  <td class="angka">${esc(p.jumlah || '')}</td>
+                  <td class="angka">${rupiah(p.nominal)}</td></tr>`).join('')
+            : '<tr><td colspan="4" class="kosong">Belum ada penjualan dalam 7 hari terakhir.</td></tr>';
+        } catch (err) {
+          document.getElementById('daftar').innerHTML = `<tr><td colspan="4" class="kosong">${esc(err.message)}</td></tr>`;
+        }
+      }
+
+      document.getElementById('formPenjualan').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        sembunyikanPesan(pesan);
+        try {
+          const hasil = await api('/api/staf/penjualan', {
+            method: 'POST',
+            token: sesi.token,
+            body: {
+              tanggal: document.getElementById('tanggal').value,
+              menuId: Number(elMenu.value),
+              jumlah: Number(elJumlah.value),
+              metodePembayaran: document.getElementById('metode').value,
+              catatan: document.getElementById('catatan').value,
+              konfirmasi: document.getElementById('konfirmasi').checked
+            }
+          });
+          tampilkanPesan(pesan, `${hasil.pesan} Total ${rupiah(hasil.data.total)}.`, true);
+          document.getElementById('konfirmasi').checked = false;
+          document.getElementById('catatan').value = '';
+          elJumlah.value = 1;
+          hitungTotal();
+          muatRiwayat();
+        } catch (err) {
+          tampilkanPesan(pesan, err.message, false);
+        }
+      });
+
+      muat().catch((err) => tampilkanPesan(pesan, err.message, false));
+    }
+  </script>
+</body>
+</html>

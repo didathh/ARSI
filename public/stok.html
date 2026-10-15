@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pencatatan Stok Bahan — Sistem Pencatatan Terpadu Dua Rumah Makan</title>
+  <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+  <header class="kepala" id="kepala"></header>
+  <nav class="nav-cips" id="nav"></nav>
+
+  <main class="utama">
+    <section class="kartu">
+      <h2>Pencatatan Stok Bahan</h2>
+      <form id="formStok" autocomplete="off">
+        <label for="tanggal">Tanggal</label>
+        <input type="date" id="tanggal" required>
+
+        <label for="cabang">Cabang</label>
+        <input type="text" id="cabang" readonly>
+
+        <label for="jenis">Jenis Catatan</label>
+        <select id="jenis" required>
+          <option value="masuk">Stok Masuk</option>
+          <option value="keluar">Stok Keluar</option>
+        </select>
+
+        <label for="namaBahan">Nama Bahan</label>
+        <input type="text" id="namaBahan" list="daftarBahan" placeholder="Contoh: Beras (CONTOH)" required>
+        <datalist id="daftarBahan"></datalist>
+
+        <label for="jumlah">Jumlah</label>
+        <input type="number" id="jumlah" min="0.01" step="any" inputmode="decimal" required>
+
+        <label for="satuan">Satuan</label>
+        <input type="text" id="satuan" placeholder="Contoh: kg, liter, buah" required>
+
+        <label for="keterangan">Keterangan</label>
+        <textarea id="keterangan" placeholder="Uraian tambahan (opsional)"></textarea>
+
+        <div class="periksa">
+          <input type="checkbox" id="konfirmasi">
+          <label for="konfirmasi">Saya menyatakan data yang saya masukkan telah diperiksa kebenarannya oleh petugas pencatat.</label>
+        </div>
+
+        <button class="tombol" type="submit">Simpan Catatan Stok</button>
+        <div class="pesan" id="pesan"></div>
+      </form>
+    </section>
+
+    <section class="kartu">
+      <h2>Catatan Stok Terakhir di Cabang Ini</h2>
+      <div class="bungkus-tabel">
+        <table>
+          <thead><tr><th>Tanggal</th><th>Jenis</th><th>Bahan</th><th class="angka">Jumlah</th></tr></thead>
+          <tbody id="daftar"><tr><td colspan="4" class="kosong">Memuat…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="./js/util.js"></script>
+  <script src="./js/staf.js"></script>
+  <script>
+    const sesi = wajibSesi();
+    if (sesi) {
+      pasangNavigasi('stok.html');
+      const pesan = document.getElementById('pesan');
+      document.getElementById('cabang').value = `${sesi.cabang.nama} (${sesi.cabang.kode})`;
+      document.getElementById('tanggal').value = hariIni();
+
+      async function muat() {
+        const h = await api('/api/staf/riwayat?dari=' + tanggalLalu(30) + '&sampai=' + hariIni(), { token: sesi.token });
+        const bahan = [...new Set(
+          h.data
+            .filter((d) => d.jenis === 'stok')
+            .map((d) => d.keterangan.replace(/^Stok (masuk|keluar): /, ''))
+        )];
+        document.getElementById('daftarBahan').innerHTML = bahan
+          .map((b) => `<option value="${esc(b)}">`)
+          .join('');
+
+        const data = h.data.filter((d) => d.jenis === 'stok').slice(0, 20);
+        document.getElementById('daftar').innerHTML = data.length
+          ? data.map((s) => {
+              const bagian = s.keterangan.split(': ');
+              const jenis = bagian[0].replace('Stok ', '');
+              return `
+              <tr><td>${tanggalIndo(s.tanggal)}</td>
+                  <td><span class="lencana stok">${esc(jenis)}</span></td>
+                  <td>${esc(bagian[1] || '')}${s.rincian ? `<div class="kecil-teks">${esc(s.rincian)}</div>` : ''}</td>
+                  <td class="angka">${esc(s.jumlah)} ${esc(s.satuan || '')}</td></tr>`;
+            }).join('')
+          : '<tr><td colspan="4" class="kosong">Belum ada catatan stok dalam 30 hari terakhir.</td></tr>';
+      }
+
+      document.getElementById('formStok').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        sembunyikanPesan(pesan);
+        try {
+          const hasil = await api('/api/staf/stok', {
+            method: 'POST',
+            token: sesi.token,
+            body: {
+              tanggal: document.getElementById('tanggal').value,
+              jenis: document.getElementById('jenis').value,
+              namaBahan: document.getElementById('namaBahan').value,
+              jumlah: Number(document.getElementById('jumlah').value),
+              satuan: document.getElementById('satuan').value,
+              keterangan: document.getElementById('keterangan').value,
+              konfirmasi: document.getElementById('konfirmasi').checked
+            }
+          });
+          tampilkanPesan(pesan, hasil.pesan, true);
+          document.getElementById('konfirmasi').checked = false;
+          document.getElementById('jumlah').value = '';
+          document.getElementById('keterangan').value = '';
+          muat();
+        } catch (err) {
+          tampilkanPesan(pesan, err.message, false);
+        }
+      });
+
+      muat().catch((err) => tampilkanPesan(pesan, err.message, false));
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Riwayat Catatan — Sistem Pencatatan Terpadu Dua Rumah Makan</title>
+  <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+  <header class="kepala" id="kepala"></header>
+  <nav class="nav-cips" id="nav"></nav>
+
+  <main class="utama">
+    <section class="kartu">
+      <h2>Riwayat Catatan Cabang</h2>
+      <form id="formFilter">
+        <div class="baris-filter">
+          <div>
+            <label for="dari">Dari Tanggal</label>
+            <input type="date" id="dari" value="">
+          </div>
+          <div>
+            <label for="sampai">Sampai Tanggal</label>
+            <input type="date" id="sampai" value="">
+          </div>
+          <div>
+            <label for="jenis">Jenis</label>
+            <select id="jenis">
+              <option value="">Semua Jenis</option>
+              <option value="penjualan">Penjualan</option>
+              <option value="pengeluaran">Pengeluaran</option>
+              <option value="stok">Stok Bahan</option>
+            </select>
+          </div>
+          <div style="align-self:end">
+            <button class="tombol" type="submit" style="margin-top:0">Terapkan Filter</button>
+          </div>
+        </div>
+      </form>
+      <div class="pesan" id="pesan"></div>
+    </section>
+
+    <section class="kartu">
+      <h2>Daftar Catatan Terbaru</h2>
+      <div class="kecil-teks" id="ketRentang"></div>
+      <div class="bungkus-tabel" style="margin-top:8px">
+        <table>
+          <thead>
+            <tr><th>Tanggal</th><th>Jenis</th><th>Keterangan</th><th class="angka">Nilai</th></tr>
+          </thead>
+          <tbody id="daftar"><tr><td colspan="4" class="kosong">Memuat…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="./js/util.js"></script>
+  <script src="./js/staf.js"></script>
+  <script>
+    const sesi = wajibSesi();
+    if (sesi) {
+      pasangNavigasi('riwayat.html');
+      const pesan = document.getElementById('pesan');
+      document.getElementById('dari').value = tanggalLalu(30);
+      document.getElementById('sampai').value = hariIni();
+
+      const labelJenis = { penjualan: 'Penjualan', pengeluaran: 'Pengeluaran', stok: 'Stok' };
+
+      async function muat() {
+        sembunyikanPesan(pesan);
+        const dari = document.getElementById('dari').value || tanggalLalu(30);
+        const sampai = document.getElementById('sampai').value || hariIni();
+        const jenis = document.getElementById('jenis').value;
+        try {
+          const h = await api(`/api/staf/riwayat?dari=${dari}&sampai=${sampai}`, { token: sesi.token });
+          const data = jenis ? h.data.filter((d) => d.jenis === jenis) : h.data;
+          document.getElementById('ketRentang').textContent =
+            `${data.length} catatan dari ${tanggalIndo(dari)} sampai ${tanggalIndo(sampai)}.`;
+          document.getElementById('daftar').innerHTML = data.length
+            ? data.map((d) => `
+              <tr>
+                <td>${tanggalIndo(d.dari_tanggal || d.tanggal)}</td>
+                <td><span class="lencana ${esc(d.jenis)}">${labelJenis[d.jenis] || esc(d.jenis)}</span></td>
+                <td>${esc(d.keterangan)}${d.rincian ? `<div class="kecil-teks">${esc(d.rincian)}</div>` : ''}
+                    ${d.konfirmasi ? '' : '<div class="kecil-teks">Belum dikonfirmasi</div>'}</td>
+                <td class="angka">${d.nominal !== null ? rupiah(d.nominal) : esc(d.jumlah + ' ' + (d.satuan || ''))}</td>
+              </tr>`).join('')
+            : '<tr><td colspan="4" class="kosong">Tidak ada catatan pada rentang tanggal tersebut.</td></tr>';
+        } catch (err) {
+          tampilkanPesan(pesan, err.message, false);
+        }
+      }
+
+      document.getElementById('formFilter').addEventListener('submit', (e) => {
+        e.preventDefault();
+        muat();
+      });
+      document.getElementById('jenis').addEventListener('change', muat);
+
+      muat();
+    }
+  </script>
+</body>
+</html>

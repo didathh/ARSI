@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Beranda Staf Cabang — Sistem Pencatatan Terpadu Dua Rumah Makan</title>
+  <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+  <header class="kepala" id="kepala">
+    <h1>Sistem Pencatatan Terpadu Dua Rumah Makan Multi Cabang</h1>
+    <div class="sub">Halaman pencatatan staf cabang (diakses melalui QR Code cabang)</div>
+  </header>
+  <nav class="nav-cips" id="nav"></nav>
+
+  <main class="utama">
+    <div class="catatan-contoh">
+      Seluruh nama rumah makan, cabang, menu, dan harga yang tampil adalah <strong>DATA CONTOH</strong>
+      dari berkas <code>data/master.js</code> dan dapat diganti.
+    </div>
+
+    <!-- Masuk cabang -->
+    <section class="kartu" id="kartuMasuk">
+      <h2>Masuk ke Cabang</h2>
+      <form id="formMasuk" autocomplete="off">
+        <label for="pilihRm">Rumah Makan</label>
+        <select id="pilihRm" required></select>
+
+        <label for="pilihCabang">Cabang</label>
+        <select id="pilihCabang" required></select>
+
+        <label for="pin">PIN Cabang</label>
+        <input type="password" id="pin" inputmode="numeric" placeholder="Masukkan PIN cabang" required>
+
+        <button class="tombol" type="submit">Masuk</button>
+        <div class="pesan" id="pesanMasuk"></div>
+      </form>
+      <p class="kecil-teks" style="margin-top:14px">
+        PIN dibaca dari berkas <code>.env</code> (variabel <code>PIN_CABANG_&lt;kode cabang&gt;</code>),
+        bukan ditulis di dalam kode sumber.
+      </p>
+    </section>
+
+    <!-- Ringkasan dan pintu bagian lain -->
+    <section class="kartu" id="kartuBeranda" hidden>
+      <h2>Ringkasan Pencatatan Hari Ini</h2>
+      <div class="kecil-teks" id="tanggalHariIni"></div>
+      <div class="ringkasan" style="margin-top:10px">
+        <div class="kotak"><div class="label">Penjualan</div><div class="nilai" id="rPenjualan">—</div><div class="kecil-teks" id="rPenjualanJml"></div></div>
+        <div class="kotak"><div class="label">Pengeluaran</div><div class="nilai" id="rPengeluaran">—</div><div class="kecil-teks" id="rPengeluaranJml"></div></div>
+        <div class="kotak"><div class="label">Selisih</div><div class="nilai" id="rSelisih">—</div><div class="kecil-teks">penjualan − pengeluaran</div></div>
+        <div class="kotak"><div class="label">Catatan Stok</div><div class="nilai" id="rStok">—</div><div class="kecil-teks">masuk/keluar hari ini</div></div>
+      </div>
+
+      <div id="menuHariIni" hidden>
+        <h3>Menu terjual hari ini</h3>
+        <div class="bungkus-tabel">
+          <table>
+            <thead><tr><th>Menu</th><th class="angka">Jumlah</th><th class="angka">Total</th></tr></thead>
+            <tbody id="isiMenuHariIni"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <h3>Bagian Lain</h3>
+      <div class="grid-menu">
+        <a class="kotak-menu" href="./penjualan.html"><span class="ikon">🧾</span>Penjualan</a>
+        <a class="kotak-menu" href="./pengeluaran.html"><span class="ikon">💸</span>Pengeluaran</a>
+        <a class="kotak-menu" href="./stok.html"><span class="ikon">📦</span>Stok Bahan</a>
+        <a class="kotak-menu" href="./riwayat.html"><span class="ikon">📋</span>Riwayat</a>
+      </div>
+      <div class="pesan" id="pesanBeranda"></div>
+      <button class="tombol sekunder" type="button" id="tombolGantiCabang">Ganti Cabang</button>
+    </section>
+  </main>
+
+  <script src="./js/util.js"></script>
+  <script src="./js/staf.js"></script>
+  <script>
+    const elRm = document.getElementById('pilihRm');
+    const elCabang = document.getElementById('pilihCabang');
+    const elPin = document.getElementById('pin');
+    const pesanMasuk = document.getElementById('pesanMasuk');
+    let master = null;
+
+    function isiCabang() {
+      const rm = master.rumahMakan.find((r) => String(r.id) === elRm.value);
+      elCabang.innerHTML = (rm ? rm.cabang : [])
+        .map((c) => `<option value="${c.id}">${esc(c.nama)} (${esc(c.kode)})</option>`)
+        .join('');
+    }
+
+    async function muatMaster() {
+      master = await api('/api/staf/master');
+      elRm.innerHTML = master.rumahMakan
+        .map((r) => `<option value="${r.id}">${esc(r.nama)}</option>`)
+        .join('');
+      isiCabang();
+
+      // Prapilih cabang dari tautan QR: /?cabang=RM_A_C1
+      const kode = ambilParameter('cabang');
+      if (kode) {
+        for (const r of master.rumahMakan) {
+          const c = r.cabang.find((x) => x.kode === kode);
+          if (c) { elRm.value = r.id; isiCabang(); elCabang.value = c.id; elPin.focus(); }
+        }
+      }
+    }
+
+    elRm.addEventListener('change', isiCabang);
+
+    document.getElementById('formMasuk').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      sembunyikanPesan(pesanMasuk);
+      try {
+        const hasil = await api('/api/staf/login', {
+          method: 'POST',
+          body: { cabangId: Number(elCabang.value), pin: elPin.value }
+        });
+        simpanSesi(hasil);
+        tampilkanBeranda();
+      } catch (err) {
+        tampilkanPesan(pesanMasuk, err.message, false);
+      }
+    });
+
+    async function tampilkanBeranda() {
+      const sesi = sesiStaf();
+      if (!sesi) return;
+      document.getElementById('kartuMasuk').hidden = true;
+      document.getElementById('kartuBeranda').hidden = false;
+      pasangNavigasi('index.html');
+      try {
+        const h = await api('/api/staf/hari-ini', { token: sesi.token });
+        document.getElementById('tanggalHariIni').textContent =
+          `Tanggal ${tanggalIndo(h.tanggal)} · ${h.cabang.nama}`;
+        document.getElementById('rPenjualan').textContent = rupiah(h.penjualan.total);
+        document.getElementById('rPenjualanJml').textContent = `${h.penjualan.jumlah} catatan`;
+        document.getElementById('rPengeluaran').textContent = rupiah(h.pengeluaran.total);
+        document.getElementById('rPengeluaranJml').textContent = `${h.pengeluaran.jumlah} catatan`;
+        const sel = document.getElementById('rSelisih');
+        sel.textContent = rupiah(h.selisih);
+        sel.className = 'nilai ' + (h.selisih >= 0 ? 'positif' : 'negatif');
+        document.getElementById('rStok').textContent = h.stok.jumlah;
+
+        const kotakMenu = document.getElementById('menuHariIni');
+        if (h.menuTerlaris.length) {
+          kotakMenu.hidden = false;
+          document.getElementById('isiMenuHariIni').innerHTML = h.menuTerlaris.map((m) => `
+            <tr><td>${esc(m.nama_menu)}</td>
+                <td class="angka">${m.jumlah}</td>
+                <td class="angka">${rupiah(m.total)}</td></tr>`).join('');
+        } else {
+          kotakMenu.hidden = true;
+        }
+      } catch (err) {
+        tampilkanPesan(document.getElementById('pesanBeranda'), err.message, false);
+      }
+    }
+
+    document.getElementById('tombolGantiCabang').addEventListener('click', () => {
+      localStorage.removeItem(KUNCI_SESI);
+      window.location.reload();
+    });
+
+    muatMaster()
+      .then(tampilkanBeranda)
+      .catch((err) => tampilkanPesan(pesanMasuk, err.message, false));
+  </script>
+</body>
+</html>
